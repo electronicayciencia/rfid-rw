@@ -127,3 +127,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+soft_pic/em4205.cof
+soft_pic/em4205.err
+soft_pic/em4205.ccspjt
+soft_pic/em4205.lst
+soft_pic/EM4205.mcp
+soft_pic/EM4205.mcs
+soft_pic/EM4205.mcw
+soft_pic/EM4205.mptags
+soft_pic/em4205.STA
+soft_pic/em4205.sym
+soft_pic/EM4205.tagsrc
+soft_pic/em4205.tre
+*.pdf
