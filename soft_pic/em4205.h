@@ -3,11 +3,10 @@
 
 #FUSES NOBROWNOUT, NOMCLR
 
-
 #use delay(internal=8MHz)
 #use rs232(baud=9600,parity=N,xmit=PIN_A4,RCV=PIN_A5,bits=8,stream=PORT1)
 
-// adjust PWM due to output stage switching time.
+// adjust PWM duty cycle due to output stage switching time.
 #define DC 20
 
 // 1 125kHz cycle = 8us
@@ -18,9 +17,13 @@
 #define THR_L   VREF_HIGH|4
 
 // Reading status
-#define	READING          0
-#define	BIPHASE_HALF_BIT 2
-#define	READ_ERROR       3
+#define	READING    0
+#define	HALF_BIT   2
+#define	READ_ERROR 3
 
-
+// Buffer por command c
 #define IOBUFF_SIZE 7
+
+// Id for command i
+#define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.00."
+

@@ -11,7 +11,6 @@ Reinoso G. - Blog Electronicayciencia - 23/12/2019
 import serial
 
 
-DEFAULT_CONFIG = 0x32fbb11b
 WORD_CONF = 4
 WORD_PASSWD = 2
 BIT_READLOGIN = 18
@@ -50,14 +49,16 @@ _DEBUG = 0
 
 
 #####################################################################
-# Auxiliary functions
+# Auxiliary and bit-wise functions
 #
 def word2data(w):
     """
     Convert a 32bit Word to Data Structure format
-    Input:  a 32bit number
-    Output: a 45bit number
-    Error:  it never fails! ;)
+
+    Input
+        32bit number
+    Output
+        45bit number
     """
 
     cp = 0  # even column parity byte
@@ -85,10 +86,14 @@ def word2data(w):
 
 def data2word(d):
     """
-    Convert a 45bit Data Structure format to a 32bit Word
-    Input:  a 45bit number
-    Output: a 32bit number
-    Error:  Raise ResponseError
+    Convert a 45 bit Data Structure format to a 32bit Word
+
+    Input
+        45 bit number
+    Output
+        32 bit number
+    Error
+        ResponseError
     """
 
     # Stop bit is always Zero
@@ -130,9 +135,11 @@ def data2word(d):
 def num2addr(n):
     """
     Convert a 4bit number to Address bit format
-    Input:  a 4bit number
-    Output: a 7bit number
-    Error:  it never fails! ;)
+
+    Input
+        4 bit number
+    Output
+        7 bit number
     """
 
     p = 0  # even parity bit
@@ -153,9 +160,11 @@ def num2addr(n):
 def cmd2cmdf(i):
     """
     Convert a 3bit number to Command bit format
-    Input:  a 3bit number
-    Output: a 4bit number
-    Error:  it never fails! ;)
+
+    Input
+        3 bit number
+    Output
+        4 bit number
     """
 
     p = 0  # even parity bit
@@ -173,13 +182,15 @@ def cmd2cmdf(i):
     return o
 
 
-# TODO: replace by pack/unpack ?
 def num2bytes(nbytes, num):
     """
-    Pack a bytes string formed by nbytes of the num in Little Endian order
-    Input:  nbytes the number of bytes, num the num to translate
-    Output: a nbytes length bytes array
-    Error:  it never fails! ;)
+    Pack a bytes string formed by nbytes of the num in Little Endian order.
+
+    Input  
+        nbytes: the number of bytes
+           num: the num to translate
+    Output
+        a nbytes length bytes array
     """
 
     s = b""
@@ -191,13 +202,14 @@ def num2bytes(nbytes, num):
     return s
 
 
-# TODO: replace by pack/unpack ?
 def bytes2num(data_bytes):
     """
-    Returns a number from the input bytes Little Endian order
-    Input:  data_bytes the bytes string
-    Output: a nbits length number
-    Error:  it never fails! ;)
+    Return a number from the input bytes Little Endian order.
+
+    Input
+        data_bytes: the bytes string
+    Output
+        a nbits length number
     """
 
     o = 0
@@ -219,55 +231,81 @@ def _clear_bit(value, bit):
     return value & ~(1 << bit)
 
 
-def send_to_reader(cmd, bts, btr):
+def biphase2manchester(nbits, number):
     """
-    Send a message to reader and retrieves response. Uses serial_conn module variable
-    Input:  ser: serial port open; bts: bits to send; btr: bits to receive; cmd command in number format
-    Output: bits received in number format
-    Error:  Raises a PySerial exception on error
+    Correct the bits of a message that has been read as it were biphase
+    encoded but it was indeed manchester.
+
+    Input: 
+           nbits: length of the message in bits
+          number: message read as bihpase
+
+    Output: 
+        message read as manchester
     """
 
-    # align bits to the left
-    cmd <<= 56 - bts
-    string_to_send = bytes([bts, btr])+num2bytes(7, cmd)
+    number >>= 1
+    man = 0
 
-    _serial_conn.write(string_to_send)
+    b = 0
+    for i in range(nbits-1, -1, -1):
+        if (number >> i) & 1:
+            b ^= 1
+        man <<= 1
+        man |= b
+
+    return man
 
 
+#####################################################################
+# Reader communication
+#
 def parse_response(bits, resp):
     """
-    Transform the response "1 1122334455667788" to [errC, preamble, dataStruct]
-    Input:  bits: response length in bits;
-            resp: response bytes in format b'1 1122334455667788'
-    Output: unprocessed dataStruct (could be empty)
-    Error:  raises TransponderError if errC is set
-            raises ReceivedMessageError if response format is unexpected
-            raises ReaderError if invalid or no response received
+    Parse the response to a c command "axxxxxxxx"
+
+    Input
+        bits: response length in bits;
+        resp: response bytes in format b'axxxxxxx'
+
+    Output: 
+        unprocessed dataStruct (could be empty)
+
+    Error
+        TransponderError if error condition non 0
+        ReceivedMessageError if response format is unexpected
+        ReaderError if invalid or no response received
     """
 
+    (err, data) = (resp[0], resp[1:])
+
+    # check error condition reported by the reader
+    if err == 1:
+        raise TransponderError("Chip not detected")
+
+    if err != 0:
+        raise TransponderError("Error condition %d unknown" % err)
+
     try:
-        [err_byte, data] = resp.split()
-        errc = int(err_byte)
-        data_bytes = bytearray.fromhex(data.decode("utf8"))
-        data_bin = bytes2num(data_bytes)
+        data_bin = bytes2num(data)
     except:
         raise ReaderError("Invalid response: " + resp)
 
     if _DEBUG:
         print("Response from chip: {0:056b}".format(data_bin))
 
-    # check error condition reported by the reader
-    if errc == 1:
-        raise TransponderError("Chip not detected")
-
-    if errc != 0:
-        raise TransponderError("Error condition %d unknown" % errc)
-
     # check preamble reported by the EM chip
     pre = (data_bin >> (bits - 8) & 0xFF)
 
     if _DEBUG:
         print("Preamble: {0:08b}".format(pre))
+
+    # Might be manchester
+    if pre in (0b00011111, 0b00011110, 0b00000011, 0b00000010):
+        if _DEBUG:
+            print("Seems Manchester")
+        data_bin = biphase2manchester(bits, data_bin)
+        pre = (data_bin >> (bits - 8) & 0xFF)
 
     if pre == 0b00000001:
         raise CommandRejected("Command rejected")
@@ -276,7 +314,7 @@ def parse_response(bits, resp):
         raise ResponseError("Preamble {0:08b} unknown".format(pre))
 
     # some commands return a datastruct, others do not
-    # This is the datastruct only if command returns a datastruct
+    # This is the datastruct but only if command actually returns a datastruct
     # 45 bits
     datastruct = data_bin & 0x1FFFFFFFFFFF
 
@@ -286,18 +324,22 @@ def parse_response(bits, resp):
 def do_cmd(msg, bts, btr):
     """
     Send a TX message to the reader and process the response.
-    Use serial_conn module variable.
-    Input:  msg: message to send
-            bts: number, bits to send
-            btr: number, bits to receive
-    Output: Response data.
-    Error:  Raise exception ReaderError on errors
+    Must call init() first.
+
+    Input
+        msg: message to send
+        bts: number, bits to send
+        btr: number, bits to receive
+    Output: 
+        Response data.
+    Error:
+        ReaderError
     """
     if _DEBUG:
         print("Message to send ({0:d} bits): {1:056b}".format(bts, msg))
 
-    msg <<= 56 - bts # pad the message to 56 bits
-    string_to_send = bytes([bts, btr])+num2bytes(7, msg)
+    msg <<= 56 - bts  # pad the message to 56 bits
+    string_to_send = b'c' + bytes([bts, btr]) + num2bytes(7, msg)
 
     if _serial_conn is None:
         raise ReaderError("Please, initialize serial connection")
@@ -307,13 +349,8 @@ def do_cmd(msg, bts, btr):
     except Exception as err:
         raise ReaderError(err)
 
-    # Ignore the cmd echo:  <aabbccddeeffgg\r\n
-    if len(_serial_conn.read(17)) == 0:
-        raise ReaderError("No response form reader")
-
-    # Response will be like: "1 aabbccddeeffgg\r\n"
-    resp = _serial_conn.read(18)
-    if len(resp) < 18:
+    resp = _serial_conn.read(8)
+    if len(resp) < 8:
         raise ReaderError("Unexpected response lenght")
 
     if _DEBUG:
@@ -439,7 +476,13 @@ def set_encoder(enc):
     write(WORD_CONF, config)
 
 
-def reset_config():
+def reset_config(pwd=0):
+    DEFAULT_CONFIG = 0x0002008f
+    try:
+        login(pwd)
+    except (ResponseError, TransponderError):
+        pass  # Transponder config migth be unknown at this point
+
     write(WORD_CONF, DEFAULT_CONFIG)
 
 
@@ -456,31 +499,50 @@ def dump_all():
 
 def init(serial_port="COM3"):
     """
-    Opens a serial port and fills the "serial_conn" class variable
+    Open a serial port and fills the "_serial_conn" class variable
+    Ask for identification string and check the response.
     Input:  serial_port: serial port name (e.g. /dev/ttyUSB0, COM3)
-    Output: none
-    Error:  Raise exceptions raised by PySerial
+    Output: Identification string
+    Error:  ReaderError if no response
+            Other exceptions raised by PySerial
     """
     global _serial_conn
     _serial_conn = serial.Serial(serial_port, 9600, timeout=1)
 
+    _serial_conn.write(b'i')
+    if _serial_conn.read(1) != b'\x00':
+        raise ReaderError("Reader initialization failed")
 
+    id = b''
+    while True:
+        try:
+            c = _serial_conn.read(1)
+        except TimeoutError:
+            raise ReaderError("Error reading Id string")
+
+        if c == b'\x00':
+            break
+
+        id += c
+
+    return id.decode("ascii").rstrip()
+
+    # TODO: read init string until 0
 #####################################################################
 # Main code
 #
 #
-#
 if __name__ == "__main__":
-
-
-
     _DEBUG = 0
 
-    init('COM3')
+    print(init('COM3'))
+
+    # read(0)
+    # exit()
 
     dump_all()
-    #write(2, 0xdeadbeef)
-
+    exit()
+    # write(2, 0xdeadbeef)
 
     try:
         login(0xdeadbeef)

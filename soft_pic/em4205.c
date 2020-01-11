@@ -5,7 +5,6 @@ int16 last_change_lapse;
 // Reader status
 int8 status;
 
-
 #INT_TIMER1
 void tmr1_overflow() {
 	disable_interrupts(INT_TIMER1);
@@ -75,6 +74,7 @@ void send_buff(int n, char *buff) {
 	}
 }
 
+
 void read_start() {
 	setup_vref(THR_H);
 	setup_comparator(A1_VR);
@@ -116,7 +116,9 @@ signed int read_wait() {
 
 
 /* Reads N bits and disable reading when finish.
-   Returns -1 on error */
+   Returns -1 on error 
+   We read the bits always as biphase, translation to Manchester 
+   is done by software. */
 signed int read_bits(int bits, char *buff) {
 	int bits_read = 0;
 	
@@ -128,22 +130,22 @@ signed int read_bits(int bits, char *buff) {
 		
 		//is it half period?
 		if (last_change_lapse <= 200) {
-			if (status == BIPHASE_HALF_BIT) {
+			if (status == HALF_BIT) {
 				// it's a Zero!
 				status = READING;
 				bit_value = 0;
 				shift_right(buff, IOBUFF_SIZE, bit_value);
-				//buff[bits_read] = 0x30+bit_value;
 				bits_read++;
 			}
 			else {
 				// it is half zero...
-				status = BIPHASE_HALF_BIT;
+				status = HALF_BIT;
 			}
 		}
+		
 		//it's whole period
 		else {
-			if (status == BIPHASE_HALF_BIT) {
+			if (status == HALF_BIT) {
 				// it's not compliant :(
 				status = READ_ERROR;
 			}
@@ -152,12 +154,9 @@ signed int read_bits(int bits, char *buff) {
 				status = READING;
 				bit_value = 1;
 				shift_right(buff, IOBUFF_SIZE, bit_value);
-				//buff[bits_read] = 0x30+bit_value;
 				bits_read++;
 			}
 		}
-		
-		//output_bit(PIN_A5, bit_value);
 	}
 	
 	read_stop();
@@ -182,6 +181,59 @@ signed int read_response(int bits, char *buff) {
 	return r;	
 }
 
+/* Command "c": Send command and get a response 
+   Syntax: srxxxxxxx
+     s: (byte) how many bits to send
+     r: (byte) how many bits to receive
+     x: (7byte) 56 bits buffer Little-Endian. First bit to send is #55.
+   Return: axxxxxxx
+     a: (byte) error condition. 0: no error, 1: no response or read error
+     x: (7byte) bits read. Little Endian. Bit #0 is last bit read.
+*/
+void cmd_c() {
+	char iobuff[IOBUFF_SIZE];
+	int bits_to_send = getc();
+	int bits_to_recv = getc();
+	
+	for (int i=0; i < IOBUFF_SIZE; i++) {
+		iobuff[i] = getc();
+	}
+
+	// Send command to transponder
+	send_buff(bits_to_send, &iobuff);
+
+	// minimum processing pause
+	delay_us(300);
+
+	// read transponder response
+	memset(&iobuff, 0, IOBUFF_SIZE);
+	if (read_response(bits_to_recv, &iobuff) > 0) {
+		putc(0); // error condition 0
+	}
+	else {
+		putc(1); // error condition 1: no response
+		return;
+	}
+	
+	for (i=0; i < IOBUFF_SIZE; i++) {
+		putc(iobuff[i]);
+	}
+}
+
+
+/* Command "i": Identify firmware reader 
+   Syntax: None
+   Return: a"<Identification>"
+     a: (byte) error condition. 0: no error
+     Identification: (stringz) Identification string zero-end
+*/
+void cmd_id() {
+	putc(0);
+	puts(ID_STRING);
+	putc(0);
+}
+
+
 void main() {
 	
 	setup_timer_1(T1_INTERNAL|T1_DIV_BY_2); // 1us@8MHz
@@ -194,40 +246,33 @@ void main() {
 	enable_interrupts(GLOBAL);
 
 	while(TRUE) {
-		//delay_ms(10);
+		int command = getc();
 		
-		// byte #0 is LSB
-		char iobuff[IOBUFF_SIZE];// = {0, 0, 0, 0, 0, 0, 0x90};
-		int bits_to_send = getc();
-		int bits_to_recv = getc();
-		for (int i=0; i < IOBUFF_SIZE; i++) {
-			iobuff[i] = getc();
+		//c: send command to transponder
+		if (command == 'c') {
+			cmd_c();	
 		}
-		putc('<');
-		for (i=0; i < IOBUFF_SIZE; i++) {
-			printf("%0x", iobuff[i]);
+
+		//i: show id
+		else if (command == 'i') {
+			cmd_id();
 		}
-		puts("");
 		
-		send_buff(bits_to_send, &iobuff);
-
-		delay_us(300); // processing pause
-
-		memset(&iobuff, 0, IOBUFF_SIZE);
-		if (read_response(bits_to_recv, &iobuff) > 0) {
-			putc('0');
+		//z: disable magnetic field
+		else if (command == 'z') {
+			putc(0);
+			set_pwm1_duty(0);
 		}
+
+		//y: enable magnetic field
+		else if (command == 'y') {
+			putc(0);
+			set_pwm1_duty((int16)DC);
+		}
+		
+		//anything else, error
 		else {
-			putc('1');
+			putc(255);
 		}
-		
-		putc(' ');
-		
-		for (i=0; i < IOBUFF_SIZE; i++) {
-			printf("%0x", iobuff[i]);
-		}
-		puts("");
 	}
-
-		
 }
