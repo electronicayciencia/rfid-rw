@@ -497,6 +497,11 @@ def set_encoder(enc):
 
 
 def reset_config(pwd=0):
+    """
+    The chip is initialized to Bi-phase data encoding, RF/32
+    clock data rate. Its LWR value is set to 8. No password.
+    Password is set to 0, words 5 to 13 are also cleared.
+    """
     DEFAULT_CONFIG = 0x0002008f
     try:
         login(pwd)
@@ -504,13 +509,15 @@ def reset_config(pwd=0):
         pass  # Transponder config migth be unknown at this point
 
     write(WORD_CONF, DEFAULT_CONFIG)
+    
+    for i in (2,5,6,7,8,9,10,11,12,13):
+        write(i,0)
 
 
 def protect(words=(0,1,2,3,4,5,6,7,8,9,10,11,12,13)):
     """
-    Protect words (or some) against writing. Note that word 14 is the 
-    protection register itself. So protecting word 14 you make
-    the chip Read Only.
+    Protect words (or some) against writing. 
+    Note that in most chips these bits cannot be cleared.
 
     Input
         words: list of words to protect (default is all words)
@@ -578,7 +585,8 @@ if __name__ == "__main__":
     print(init('COM3'))
 
     try:
-        protect([2,3])
+        pass
+        reset_config()
     except Exception as e:
         print(e)
 
