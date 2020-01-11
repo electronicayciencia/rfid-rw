@@ -186,7 +186,7 @@ def num2bytes(nbytes, num):
     """
     Pack a bytes string formed by nbytes of the num in Little Endian order.
 
-    Input  
+    Input
         nbytes: the number of bytes
            num: the num to translate
     Output
@@ -236,11 +236,11 @@ def biphase2manchester(nbits, number):
     Correct the bits of a message that has been read as it were biphase
     encoded but it was indeed manchester.
 
-    Input: 
+    Input:
            nbits: length of the message in bits
           number: message read as bihpase
 
-    Output: 
+    Output:
         message read as manchester
     """
 
@@ -268,7 +268,7 @@ def parse_response(bits, resp):
         bits: response length in bits;
         resp: response bytes in format b'axxxxxxx'
 
-    Output: 
+    Output:
         unprocessed dataStruct (could be empty)
 
     Error
@@ -330,7 +330,7 @@ def do_cmd(msg, bts, btr):
         msg: message to send
         bts: number, bits to send
         btr: number, bits to receive
-    Output: 
+    Output:
         Response data.
     Error:
         ReaderError
@@ -360,7 +360,7 @@ def do_cmd(msg, bts, btr):
 
 
 #####################################################################
-# Basic commands
+# Primitive EM4205 commands
 #
 def read(addr):
     """
@@ -402,6 +402,26 @@ def login(pwd):
     do_cmd(msg, 4+45, 8)
 
 
+def cmd_protect(word):
+    """
+    Compose and send a protect command message to reader.
+
+    Input
+        word: protection word value
+    Output 
+        None
+    Error
+        CommandRejected if not accepted (parity error or Power Check fail)
+    """
+    # msg: cmd (4 bits) + protect_word as data structure (45 bits)
+    # res: preamble (8bits)
+
+    # for i in protected:
+    #    word += 1 << i
+    msg = (cmd2cmdf(0b011) << 45) + word2data(word)
+    do_cmd(msg, 4+45, 8)
+
+
 def disable():
     """
     Compose and send a disable command message to reader
@@ -416,7 +436,7 @@ def disable():
 
 
 #####################################################################
-# Complex commands
+# High level commands
 #
 def set_password(pwd):
     """
@@ -486,6 +506,26 @@ def reset_config(pwd=0):
     write(WORD_CONF, DEFAULT_CONFIG)
 
 
+def protect(words=(0,1,2,3,4,5,6,7,8,9,10,11,12,13)):
+    """
+    Protect words (or some) against writing. Note that word 14 is the 
+    protection register itself. So protecting word 14 you make
+    the chip Read Only.
+
+    Input
+        words: list of words to protect (default is all words)
+    Error
+        Value error if some word is no between 0 and 14.
+    """
+    prot_word = 0
+    for i in words:
+        if i > 14 or i < 0:
+            raise ValueError("Words must be between 0 and 14")
+        prot_word += 1<<i
+
+    cmd_protect(prot_word)
+
+
 def dump_all():
     for addr in range(16):
         print("Word at position {0:2d}:  ".format(addr), end='')
@@ -501,7 +541,7 @@ def init(serial_port="COM3"):
     """
     Open a serial port and fills the "_serial_conn" class variable
     Ask for identification string and check the response.
-    Input:  serial_port: serial port name (e.g. /dev/ttyUSB0, COM3)
+    Input:  serial_port: serial port name(e.g. / dev/ttyUSB0, COM3)
     Output: Identification string
     Error:  ReaderError if no response
             Other exceptions raised by PySerial
@@ -537,8 +577,14 @@ if __name__ == "__main__":
 
     print(init('COM3'))
 
-    # read(0)
-    # exit()
+    try:
+        protect([2,3])
+    except Exception as e:
+        print(e)
+
+    dump_all()
+
+    exit()
 
     dump_all()
     exit()
