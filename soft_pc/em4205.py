@@ -536,6 +536,29 @@ def set_encoder(enc):
     write(WORD_CONF, config)
 
 
+def set_datarate(datarate):
+    dr = {
+        8:  0b000011,
+        16: 0b000111,
+        32: 0b001111,
+        40: 0b010011,
+        64: 0b011111
+    }
+
+    if datarate not in dr:
+        raise ValueError("Rates available are 8, 16, 32, 40 or 64 RF cycles.")
+
+    # reader must be configured with the correct datarate in order to
+    # read the configuration word.
+    config = read(WORD_CONF)
+    config &= 0xFFFFFFE0
+    config |= dr[datarate]
+
+    reader_datarate(datarate)
+
+    write(WORD_CONF, config)
+
+
 def reset_config(pwd=0):
     """
     Reconfig the chip is initialized to Bi-phase data encoding, RF/32
@@ -700,7 +723,18 @@ if __name__ == "__main__":
 
     print(init('COM3'))
   
+    def keyfob_64_manchester():
+        reader_datarate(64)
+        a = read_stream()
+        msg = "{0:0288b}".format(biphase2manchester(288,a))
+        start = msg.find("111111111")
+        if start < 0:
+            print("Format unknown")
 
+        msg = msg[start:start+64]
+        print(msg)
+
+    keyfob_64_manchester()
     #for i in range(5,14):
     #    write(i,0x0)
 
@@ -717,9 +751,7 @@ if __name__ == "__main__":
 
     #dump_all()
 
-    reader_datarate(64)
-    a = read_stream()
-    print("{0:0288b}".format(a))
+
 
 
 
