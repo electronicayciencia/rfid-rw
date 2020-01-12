@@ -17,12 +17,15 @@
 #define THR_L   VREF_HIGH|4
 
 // Reading status
-#define	READING    0
-#define	HALF_BIT   2
-#define	READ_ERROR 3
+#define	READING      0
+#define	HALF_BIT     2
+#define	READ_ERROR   3
+#define	READ_TIMEOUT 4
 
-// Buffer por command c
+// Buffer for command c
 #define IOBUFF_SIZE 7
+// Buffer for command r
+#define MAXBUFF_SIZE 36
 
 // Id for command i
 #define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.00."
