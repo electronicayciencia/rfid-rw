@@ -272,22 +272,12 @@ def parse_response(bits, resp):
         unprocessed dataStruct (could be empty)
 
     Error
-        TransponderError if error condition non 0
         ReceivedMessageError if response format is unexpected
         ReaderError if invalid or no response received
     """
 
-    (err, data) = (resp[0], resp[1:])
-
-    # check error condition reported by the reader
-    if err == 1:
-        raise TransponderError("Chip not detected")
-
-    if err != 0:
-        raise TransponderError("Error condition %d unknown" % err)
-
     try:
-        data_bin = bytes2num(data)
+        data_bin = bytes2num(resp)
     except:
         raise ReaderError("Invalid response: " + resp)
 
@@ -349,8 +339,26 @@ def do_cmd(msg, bts, btr):
     except Exception as err:
         raise ReaderError(err)
 
-    resp = _serial_conn.read(8)
-    if len(resp) < 8:
+    err = _serial_conn.read(1)
+
+    if len(err) < 1:
+        raise ReaderError("Reader not responding")
+
+    err = err[0]
+
+    # check error condition reported by the reader
+    if err == 1:
+        raise TransponderError("Chip not detected")
+
+    if err == 2:
+        raise TransponderError("Communication error")
+
+    if err != 0:
+        raise TransponderError("Error condition %d unknown" % err)
+
+    resp = _serial_conn.read(7)
+
+    if len(resp) < 7:
         raise ReaderError("Unexpected response lenght")
 
     if _DEBUG:
@@ -365,10 +373,18 @@ def do_cmd(msg, bts, btr):
 def read(addr):
     """
     Compose and send a read command message to reader
-    Input:  address of the word to read
-    Output: returns the value stored at word addr
-    Error:  CommandRejected if password protection is active
+
+    Input
+        address of the word to read
+    Output
+        returns the value stored at word addr
+    Error
+        CommandRejected if password protection is active
+        ValueError if word is not between 0 and 15
     """
+    if addr < 0 or addr > 15:
+        raise ValueError("Address must be between 0 and 15")
+
     # cmd: (4 bits) + address (7 bits)
     # res: preamble (8bits) + data struct (45 bits)
     msg = (cmd2cmdf(0b001) << 7) + num2addr(addr)
@@ -379,12 +395,20 @@ def read(addr):
 def write(addr, word):
     """
     Compose and send a write command message to reader
-    Input:  address of the word to write; word: value to write
-    Output: None
-    Error:  CommandRejected if password protected or protected word
+
+    Input
+        address of the word to write; word: value to write
+    Output
+        None
+    Error  
+        CommandRejected if password protected or protected word
+        ValueError if word is above 32 bits.
     """
     # msg: cmd (4 bits) + address (7 bits) + data structure (45 bits)
     # res: preamble (8bits)
+    if word >= 1<<32:
+        raise ValueError("Word must be below 2^32")
+
     msg = (cmd2cmdf(0b010) << 52) + (num2addr(addr) << 45) + word2data(word)
     do_cmd(msg, 4+7+45, 8)
 
@@ -392,10 +416,18 @@ def write(addr, word):
 def login(pwd):
     """
     Compose and send a login command message to reader
-    Input:  pwd: password value
-    Output: None
-    Error:  CommandRejected if incorrect password
+
+    Input
+        pwd: password value
+    Output
+        None
+    Error
+        CommandRejected if incorrect password
+        ValueError if password is over 32 bits
     """
+    if pwd >= 1<<32:
+        raise ValueError("Password must be 32 bits")
+
     # msg: cmd (4 bits) + password as data structure (45 bits)
     # res: preamble (8bits)
     msg = (cmd2cmdf(0b100) << 45) + word2data(pwd)
@@ -425,9 +457,13 @@ def cmd_protect(word):
 def disable():
     """
     Compose and send a disable command message to reader
-    Input:  None
-    Output: Trigger a ChipNotDetected exception if ok
-    Error:  CommandRejected if disable command is not enabled
+
+    Input
+        None
+    Output
+        Trigger a ChipNotDetected exception if ok
+    Error
+        CommandRejected if disable command is not enabled or error
     """
     # msg: cmd (4 bits) + all 1's data structure (45 bits)
     # res: preamble (8bits)
@@ -441,9 +477,13 @@ def disable():
 def set_password(pwd):
     """
     Set the login password (but not enable it)
-    Input:  pwd: password value
-    Output: None
-    Error:  Raise exception
+
+    Input
+        pwd: password value
+    Output
+        None
+    Error
+        Exceptions from write()
     """
     write(WORD_PASSWD, pwd)
     pass
@@ -498,7 +538,7 @@ def set_encoder(enc):
 
 def reset_config(pwd=0):
     """
-    The chip is initialized to Bi-phase data encoding, RF/32
+    Reconfig the chip is initialized to Bi-phase data encoding, RF/32
     clock data rate. Its LWR value is set to 8. No password.
     Password is set to 0, words 5 to 13 are also cleared.
     """
@@ -514,7 +554,7 @@ def reset_config(pwd=0):
         write(i,0)
 
 
-def protect(words=(0,1,2,3,4,5,6,7,8,9,10,11,12,13)):
+def protect(words=(1)):
     """
     Protect words (or some) against writing. 
     Note that in most chips these bits cannot be cleared.
@@ -544,37 +584,113 @@ def dump_all():
             print(err)
 
 
+def reader_datarate(rf_cycles=0):
+    """
+    Set the reading speed of the reader.
+
+    Input
+        rf_cycles: 0, 8, 16, 32, 40 or 64
+        If 0, do not alter the current speed.
+    Output
+        Reader semibit period (in us).
+    Error
+        ReaderError if no response
+    """
+    if rf_cycles not in (0,8,16,32,40,64):
+        raise ValueError("Speed must be 0, 8, 16, 32, 40 or 64")
+
+    if rf_cycles != 0:
+        semibit = int(rf_cycles/125 * 1e3 * 3/4)
+        _serial_conn.write(b't' + bytes([semibit>>1]))
+        resp = _serial_conn.read(1)
+
+        if resp[0] != 0:
+            raise ReaderError("Command 't' unkown")
+    
+    _serial_conn.write(b't\x00')
+
+    resp = _serial_conn.read(2)
+    if resp[0] != 0:
+        raise ReaderError("Command 't' unkown")
+    
+    return resp[1]<<1
+
+
 def init(serial_port="COM3"):
     """
     Open a serial port and fills the "_serial_conn" class variable
     Ask for identification string and check the response.
-    Input:  serial_port: serial port name(e.g. / dev/ttyUSB0, COM3)
-    Output: Identification string
-    Error:  ReaderError if no response
-            Other exceptions raised by PySerial
+
+    Input
+        serial_port: serial port name(e.g. / dev/ttyUSB0, COM3)
+    Output
+        Reader identification string
+    Error
+        ReaderError if no response
+        Other exceptions raised by PySerial
     """
     global _serial_conn
     _serial_conn = serial.Serial(serial_port, 9600, timeout=1)
 
+    return reader_id()
+
+
+def reader_id():
+    """
+    Get the reader identification string. 
+    Uses _serial_conn module variable.
+
+    Output
+        Reader identification string
+    Error
+        ReaderError if timeout or unexpected response from reader.
+    """
     _serial_conn.write(b'i')
     if _serial_conn.read(1) != b'\x00':
-        raise ReaderError("Reader initialization failed")
+        raise ReaderError("Id command now known")
 
-    id = b''
-    while True:
-        try:
-            c = _serial_conn.read(1)
-        except TimeoutError:
-            raise ReaderError("Error reading Id string")
+    try:
+        id = _serial_conn.read_until(b'\x00')
+    except TimeoutError:
+        raise ReaderError("Error reading Id string")
 
-        if c == b'\x00':
-            break
+    return id[:-1].decode("ascii").rstrip()
 
-        id += c
 
-    return id.decode("ascii").rstrip()
+def read_stream():
+    """
+    Read 288 bits (9 x 32 bit words) in a row.
 
-    # TODO: read init string until 0
+    Output
+        string with 288 bits (101001...) in order or reception
+    Error
+        ReaderError if reader response is not ok
+        TransponderError if empty message, no chip or communication error
+    """
+    _serial_conn.write(b'r')
+    errc = _serial_conn.read(1)
+
+    errc = errc[0]
+
+    if errc == 1:
+        raise TransponderError("Communication error")
+    elif errc == 2:
+        raise TransponderError("No response from chip")
+    elif errc == 3:
+        raise TransponderError("Empty message")
+    
+    msg = _serial_conn.read(36)
+
+    #num = 0
+    #for i in msg[::-1]:
+    #    num <<= 8
+    #    num += i
+    
+    #print("{0:0288b}".format(num))
+    return bytes2num(msg)
+    
+
+
 #####################################################################
 # Main code
 #
@@ -583,43 +699,30 @@ if __name__ == "__main__":
     _DEBUG = 0
 
     print(init('COM3'))
+  
 
-    try:
-        pass
-        reset_config()
-    except Exception as e:
-        print(e)
+    #for i in range(5,14):
+    #    write(i,0x0)
 
-    dump_all()
+    #dump_all()
+    #write( 5, 0b10000000000000000000000000000010)
+    #write( 6, 0b10000000000000000000000000000100)
+    #write( 7, 0b10000000000000000000000000001000)
+    #write( 8, 0b10000000000000000000000000010000)
+    #write( 9, 0b10000000000000000000000000100000)
+    #write(10, 0b10000000000000000000000001000000)
+    #write(11, 0b10000000000000000000000010000000)
+    #write(12, 0b10000000000000000000000100000000)
+    #write(13, 0b10000000000000000000001000000000)
 
-    exit()
+    #dump_all()
 
-    dump_all()
-    exit()
-    # write(2, 0xdeadbeef)
+    reader_datarate(64)
+    a = read_stream()
+    print("{0:0288b}".format(a))
 
-    try:
-        login(0xdeadbeef)
-        print("Login ok")
-    except CommandRejected:
-        print("Wrong password")
 
-    # dump_all()
-    # set_password(0xdeadbeef)
-    # dump_all()
-    # enable_read_password(1)
-    # dump_all()
-    # enable_read_password(0)
-    # dump_all()
 
-    """
-	try:
-	#	write(2,0xdeadbeef)
-	#	write(7, read(7) & ~Conf_ReadLogin & 0xFFFFFFFF)
-	#	write(ConfWord, read(ConfWord) | Conf_ReadLogin)
-		print("Writing Successful")
-	except Exception as e:
-		print("Write error: %s" % e)
-	"""
 
-    exit()
+#    exit()
+
