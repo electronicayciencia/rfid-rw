@@ -3,12 +3,21 @@
 // TMR1 value when last comparator change
 // you must clear this variable once used 
 // since a status change could happen while you are proccesing last one.
-// read_wait will not wait if you forget to clear this variable.
+// read_wait will not wait anymore if you forget to clear this variable.
 int16 last_change_lapse;
+
 // Reader status
 int8 status;
-// Threshold between a whole bit and semi bit period (us)
-int16 semibit_time = 190;
+
+// Default time threshold between a whole bit and semi bit period (us)
+int16 semibit_time = DEFAULT_SEMI_TIME;
+
+// Comparator hysteresis
+int8 thr_h = DEFAULT_THR_H;
+int8 thr_l = DEFAULT_THR_L;
+
+//Debug of comparator on DEBUG_PIN
+int debug = 0;
 
 #INT_TIMER1
 void tmr1_overflow() {
@@ -19,16 +28,24 @@ void tmr1_overflow() {
 
 #INT_COMP
 void comp_change() {
-	last_change_lapse = get_timer1();
-	set_timer1(0);
+	int16 us = get_timer1();
+	set_timer1(0); // reset reading watchdog
 	
+	// ignore changes shorter than 3 periods
+	if (us < 24)
+		return;
+
 	// Inverting input	
 	if (C1OUT){
-		setup_vref(THR_H);
+		if (debug) output_low(DEBUG_PIN);
+		setup_vref(thr_h);
 	}
 	else {
-		setup_vref(THR_L);
+		if (debug) output_high(DEBUG_PIN);
+		setup_vref(thr_l);
 	}
+	
+	last_change_lapse = us;
 }
 
 
@@ -81,7 +98,7 @@ void send_buff(int n, char *buff) {
 
 
 void read_start() {
-	setup_vref(THR_H);
+	setup_vref(thr_h);
 	setup_comparator(A1_VR);
 	
 	status = READING; // clears previous error condition	
@@ -351,15 +368,25 @@ void cmd_t() {
 
 
 void main() {
+
+	// Timer1 counts us @8MHz
+	// overflows at 65ms (read timeout)
+	setup_timer_1(T1_INTERNAL|T1_DIV_BY_2);
 	
-	setup_timer_1(T1_INTERNAL|T1_DIV_BY_2); // 1us@8MHz
-	setup_timer_2(T2_DIV_BY_1,15,1); // 125kHz
+	// Timer2 sets the oscillator frecuency: 125kHz.
+	setup_timer_2(T2_DIV_BY_1,FREQ,1);
 	set_pwm1_duty((int16)DC);
 	setup_ccp1(CCP_PWM);
 
 	disable_interrupts(INT_COMP);
 	disable_interrupts(INT_TIMER1);	
 	enable_interrupts(GLOBAL);
+
+
+	//setup_vref(thr_h);
+	//setup_comparator(A1_VR);
+	//enable_interrupts(INT_COMP);
+	//while(TRUE) {}
 
 	while(TRUE) {
 		int command = getc();
@@ -368,10 +395,28 @@ void main() {
 		if (command == 'c') {
 			cmd_c();	
 		}
+		
+		//d: activate debug (until turn off or reset)
+		else if (command == 'd') {
+			debug = 1;
+			putc(0);
+		}
+
+		//h: set comparator levels, first high then low
+		else if (command == 'h') {
+			thr_h = getc();
+			thr_l = getc();
+			putc(0);
+		}
 
 		//i: show id
 		else if (command == 'i') {
 			cmd_id();
+		}
+		
+		//k: reset CPU
+		else if (command == 'k') {
+			reset_cpu();
 		}
 		
 		//r: read raw
@@ -383,12 +428,6 @@ void main() {
 		else if (command == 't') {
 			cmd_t();
 		}
-		
-		//z: disable magnetic field
-		else if (command == 'z') {
-			putc(0);
-			set_pwm1_duty(0);
-		}
 
 		//y: enable magnetic field
 		else if (command == 'y') {
@@ -396,14 +435,16 @@ void main() {
 			set_pwm1_duty((int16)DC);
 		}
 		
-		//k: reset CPU
-		else if (command == 'k') {
-			reset_cpu();
+		//z: disable magnetic field
+		else if (command == 'z') {
+			putc(0);
+			set_pwm1_duty(0);
 		}
-		
+
 		//anything else, error
 		else {
 			putc(255);
 		}
 	}
+
 }

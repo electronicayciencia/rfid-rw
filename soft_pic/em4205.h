@@ -1,20 +1,27 @@
 #include <12F683.h>
-#device ADC=8
-
-#FUSES NOBROWNOUT, NOMCLR
+#device ADC=8 
+#FUSES NOBROWNOUT, NOMCLR
 
 #use delay(internal=8MHz)
 #use rs232(baud=9600,parity=N,xmit=PIN_A4,RCV=PIN_A5,bits=8,stream=PORT1)
 
+#define DEBUG_PIN PIN_A5
+
 // adjust PWM duty cycle due to output stage switching time.
 #define DC 20
+#define FREQ 15
+
 
 // 1 125kHz cycle = 8us
 #define CYCLE 8
 
-// Hysteresis for comparator
-#define THR_H   VREF_HIGH|6
-#define THR_L   VREF_HIGH|4
+// Hysteresis for comparator 1.82-1.97
+#define DEFAULT_THR_H   VREF_HIGH|6
+#define DEFAULT_THR_L   VREF_HIGH|4
+
+
+// RF/32 data rate as default
+#define DEFAULT_SEMI_TIME 190
 
 // Reading status
 #define	READING      0
@@ -28,5 +35,5 @@
 #define MAXBUFF_SIZE 36
 
 // Id for command i
-#define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.00."
+#define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.01."
 

@@ -450,8 +450,8 @@ def cmd_protect(word):
 
     # for i in protected:
     #    word += 1 << i
-    msg = (cmd2cmdf(0b011) << 45) + word2data(word)
-    do_cmd(msg, 4+45, 8)
+    #msg = (cmd2cmdf(0b011) << 45) + word2data(word)
+    #do_cmd(msg, 4+45, 8) # Command disabled
 
 
 def disable():
@@ -571,6 +571,7 @@ def reset_config(pwd=0):
     except (ResponseError, TransponderError):
         pass  # Transponder config migth be unknown at this point
 
+    reader_datarate(32)
     write(WORD_CONF, DEFAULT_CONFIG)
     
     for i in (2,5,6,7,8,9,10,11,12,13):
@@ -606,7 +607,9 @@ def dump_all():
         except Exception as err:
             print(err)
 
-
+#####################################################################
+# Reader commands
+#
 def reader_datarate(rf_cycles=0):
     """
     Set the reading speed of the reader.
@@ -670,7 +673,7 @@ def reader_id():
     """
     _serial_conn.write(b'i')
     if _serial_conn.read(1) != b'\x00':
-        raise ReaderError("Id command now known")
+        raise ReaderError("Id command not known")
 
     try:
         id = _serial_conn.read_until(b'\x00')
@@ -703,15 +706,72 @@ def read_stream():
         raise TransponderError("Empty message")
     
     msg = _serial_conn.read(36)
-
-    #num = 0
-    #for i in msg[::-1]:
-    #    num <<= 8
-    #    num += i
-    
-    #print("{0:0288b}".format(num))
     return bytes2num(msg)
     
+
+def reader_debug():
+    """
+    Activate reader's comparator debug. It will remain active until reset.
+
+    Error
+        ReaderError if unexpected response from reader.
+    """
+    _serial_conn.write(b'd')
+
+    if _serial_conn.read(1) != b'\x00':
+        raise ReaderError("Command error")
+
+
+def reader_reset():
+    """
+    Try to reset reader's CPU.
+    """
+    _serial_conn.write(b'k')
+
+
+def reader_hysteress(high=0, low=0, vdd=5):
+    """
+    Set reader's comparator thresholds.
+
+    Input
+        high: (float) voltage for high threshold
+         low: (float) voltage for low threshold
+         vdd: (float) supply voltage
+
+    Output
+        (high, low) effective thresholds selected
+
+    Error
+        ReaderError if unexpected response from reader.
+    """
+    
+    VREF_LOW = 0xa0
+    VREF_HIGH = 0x80
+
+    v = {}
+    for vr in range(16):
+        v[VREF_LOW|vr] = vr/24*vdd
+    
+    for vr in range(16):
+        v[VREF_HIGH|vr] = vr/32*vdd+vdd/4
+    
+    # choose the value nearest to desired voltages
+    v_h = {key:abs(val-high) for (key,val) in v.items()}
+    v_l = {key:abs(val-low)  for (key,val) in v.items()}
+    
+    thr_h = min(v_h, key=v_h.get)
+    thr_l = min(v_l, key=v_l.get)
+
+    if _DEBUG:
+        print(thr_h, thr_l)
+
+    # set the values
+    _serial_conn.write(b'h' + bytes([thr_h, thr_l]))
+
+    if _serial_conn.read(1) != b'\x00':
+        raise ReaderError("Command error")
+
+    return (v[thr_h], v[thr_l])
 
 
 #####################################################################
@@ -734,7 +794,7 @@ if __name__ == "__main__":
         msg = msg[start:start+64]
         print(msg)
 
-    keyfob_64_manchester()
+    #keyfob_64_manchester()
     #for i in range(5,14):
     #    write(i,0x0)
 
