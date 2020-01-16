@@ -722,6 +722,32 @@ def reader_debug():
         raise ReaderError("Command error")
 
 
+def reader_stop():
+    """
+    Stop oscillating magnetic field.
+
+    Error
+        ReaderError if unexpected response from reader.
+    """
+    _serial_conn.write(b'z')
+
+    if _serial_conn.read(1) != b'\x00':
+        raise ReaderError("Command error")
+
+
+def reader_start():
+    """
+    Start oscillating magnetic field (default mode).
+
+    Error
+        ReaderError if unexpected response from reader.
+    """
+    _serial_conn.write(b'y')
+
+    if _serial_conn.read(1) != b'\x00':
+        raise ReaderError("Command error")
+
+
 def reader_reset():
     """
     Try to reset reader's CPU.
@@ -729,7 +755,7 @@ def reader_reset():
     _serial_conn.write(b'k')
 
 
-def reader_hysteress(high=0, low=0, vdd=5):
+def reader_threshold(low=0, high=0, vdd=5):
     """
     Set reader's comparator thresholds.
 
@@ -771,7 +797,7 @@ def reader_hysteress(high=0, low=0, vdd=5):
     if _serial_conn.read(1) != b'\x00':
         raise ReaderError("Command error")
 
-    return (v[thr_h], v[thr_l])
+    return (v[thr_l], v[thr_h])
 
 
 #####################################################################
