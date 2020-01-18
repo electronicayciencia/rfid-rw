@@ -15,13 +15,19 @@
 // 1 125kHz cycle = 8us
 #define CYCLE 8
 
-// Hysteresis for comparator 1.82-1.97
+// Hysteresis for comparator
 #define DEFAULT_THR_H   VREF_HIGH|6
 #define DEFAULT_THR_L   VREF_HIGH|4
 
-
 // RF/32 data rate as default
 #define DEFAULT_SEMI_TIME 190
+
+// Output error condition
+#define ERR_NOERR 0
+#define ERR_READ_TIMEOUT 1
+#define ERR_READ_ERROR 2
+#define ERR_EMPTY_MESSAGE 3
+#define ERR_COMMAND_UNKNOWN 255
 
 // Reading status
 #define	READING      0

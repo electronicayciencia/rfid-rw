@@ -19,6 +19,11 @@ BIT_DISABLECMD = 23
 BIT_ENC_BIPHASE = 7
 BIT_ENC_MANCHESTER = 6
 
+ERR_NOERR = 0
+ERR_READ_TIMEOUT = 1
+ERR_READ_ERROR = 2
+ERR_EMPTY_MESSAGE = 3
+ERR_COMMAND_UNKNOWN = 255
 
 #####################################################################
 class Error(Exception):
@@ -347,13 +352,13 @@ def do_cmd(msg, bts, btr):
     err = err[0]
 
     # check error condition reported by the reader
-    if err == 1:
-        raise TransponderError("Chip not detected")
+    if err == ERR_READ_TIMEOUT:
+        raise TransponderError("Read timeout, chip not detected")
 
-    if err == 2:
+    if err == ERR_READ_ERROR:
         raise TransponderError("Communication error")
 
-    if err != 0:
+    if err != ERR_NOERR:
         raise TransponderError("Error condition %d unknown" % err)
 
     resp = _serial_conn.read(7)
@@ -622,8 +627,8 @@ def reader_datarate(rf_cycles=0):
     Error
         ReaderError if no response
     """
-    if rf_cycles not in (0,8,16,32,40,64):
-        raise ValueError("Speed must be 0, 8, 16, 32, 40 or 64")
+    #if rf_cycles not in (0,8,16,32,40,64):
+    #    raise ValueError("Speed must be 0, 8, 16, 32, 40 or 64")
 
     if rf_cycles != 0:
         semibit = int(rf_cycles/125 * 1e3 * 3/4)
@@ -636,7 +641,7 @@ def reader_datarate(rf_cycles=0):
     _serial_conn.write(b't\x00')
 
     resp = _serial_conn.read(2)
-    if resp[0] != 0:
+    if resp[0] != ERR_NOERR:
         raise ReaderError("Command 't' unkown")
     
     return resp[1]<<1
@@ -672,7 +677,8 @@ def reader_id():
         ReaderError if timeout or unexpected response from reader.
     """
     _serial_conn.write(b'i')
-    if _serial_conn.read(1) != b'\x00':
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
         raise ReaderError("Id command not known")
 
     try:
@@ -698,28 +704,31 @@ def read_stream():
 
     errc = errc[0]
 
-    if errc == 1:
+    if errc == ERR_READ_ERROR:
         raise TransponderError("Communication error")
-    elif errc == 2:
+    elif errc == ERR_READ_TIMEOUT:
         raise TransponderError("No response from chip")
-    elif errc == 3:
+    elif errc == ERR_EMPTY_MESSAGE:
         raise TransponderError("Empty message")
     
     msg = _serial_conn.read(36)
     return bytes2num(msg)
     
 
-def reader_debug():
+def reader_debug(debug_type):
     """
     Activate reader's comparator debug. It will remain active until reset.
 
     Error
         ReaderError if unexpected response from reader.
     """
-    _serial_conn.write(b'd')
+    if debug_type not in (1, 2):
+        raise ValueError("Debug type must be 1 or 2")
 
-    if _serial_conn.read(1) != b'\x00':
-        raise ReaderError("Command error")
+    _serial_conn.write(b'd' + bytes([debug_type]))
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
+        raise ReaderError("Debug, command error")
 
 
 def reader_stop():
@@ -730,8 +739,8 @@ def reader_stop():
         ReaderError if unexpected response from reader.
     """
     _serial_conn.write(b'z')
-
-    if _serial_conn.read(1) != b'\x00':
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
         raise ReaderError("Command error")
 
 
@@ -743,8 +752,8 @@ def reader_start():
         ReaderError if unexpected response from reader.
     """
     _serial_conn.write(b'y')
-
-    if _serial_conn.read(1) != b'\x00':
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
         raise ReaderError("Command error")
 
 
@@ -753,16 +762,20 @@ def reader_reset():
     Try to reset reader's CPU.
     """
     _serial_conn.write(b'k')
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
+        raise ReaderError("Command error")
 
 
 def reader_threshold(low=0, high=0, vdd=5):
     """
-    Set reader's comparator thresholds.
+    Set reader's comparator thresholds. Choose the nearest value
+    below the low thr and the nearest above high threshold.
 
     Input
         high: (float) voltage for high threshold
          low: (float) voltage for low threshold
-         vdd: (float) supply voltage
+         vdd: (float) supply voltage (default = 5V)
 
     Output
         (high, low) effective thresholds selected
@@ -781,20 +794,24 @@ def reader_threshold(low=0, high=0, vdd=5):
     for vr in range(16):
         v[VREF_HIGH|vr] = vr/32*vdd+vdd/4
     
-    # choose the value nearest to desired voltages
-    v_h = {key:abs(val-high) for (key,val) in v.items()}
-    v_l = {key:abs(val-low)  for (key,val) in v.items()}
+    thr_l = None
+    thr_h = None
     
-    thr_h = min(v_h, key=v_h.get)
-    thr_l = min(v_l, key=v_l.get)
+    for i in v.keys():
+        if thr_h is None:
+            thr_l = i
+            thr_h = i
 
-    if _DEBUG:
-        print(thr_h, thr_l)
+        if v[i] < low and abs(v[i] - low) < abs(v[thr_l] - low):
+            thr_l = i
+
+        if v[i] > high and abs(v[i] - high) < abs(v[thr_h] - high):
+            thr_h = i
 
     # set the values
-    _serial_conn.write(b'h' + bytes([thr_h, thr_l]))
-
-    if _serial_conn.read(1) != b'\x00':
+    _serial_conn.write(b'h' + bytes([thr_l, thr_h]))
+    r = _serial_conn.read(1)
+    if r[0] != ERR_NOERR:
         raise ReaderError("Command error")
 
     return (v[thr_l], v[thr_h])
@@ -808,6 +825,11 @@ if __name__ == "__main__":
     _DEBUG = 0
 
     print(init('COM3'))
+    reader_debug(2)
+    reader_datarate(16)
+    reader_threshold(2.1,2.35)
+    read(0)
+    exit()
   
     def keyfob_64_manchester():
         reader_datarate(64)
