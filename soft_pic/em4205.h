@@ -15,31 +15,38 @@
 // 1 125kHz cycle = 8us
 #define CYCLE 8
 
-// Hysteresis for comparator
-#define DEFAULT_THR_H   VREF_HIGH|6
-#define DEFAULT_THR_L   VREF_HIGH|4
+// Comparator levels:
+//   Middle level: 2.03
+//   Above noise level: 2.29
+#define DEFAULT_MIDDLE_LEVEL  VREF_HIGH|5
+#define DEFAULT_TRIGGER_LEVEL VREF_LOW|11
 
 // RF/32 data rate as default
 #define DEFAULT_SEMI_TIME 190
 
+// us to wait between command and response.
+// It lets the input settle below comp_trigger before start reading
+#define WRITE_READ_PAUSE 250
+
 // Output error condition
-#define ERR_NOERR 0
-#define ERR_READ_TIMEOUT 1
-#define ERR_READ_ERROR 2
-#define ERR_EMPTY_MESSAGE 3
+#define ERR_NOERR           0
+#define ERR_READ_TIMEOUT    1
+#define ERR_READ_ERROR      2
+#define ERR_EMPTY_MESSAGE   3
 #define ERR_COMMAND_UNKNOWN 255
 
 // Reading status
-#define	READING      0
-#define	HALF_BIT     2
-#define	READ_ERROR   3
-#define	READ_TIMEOUT 4
+#define	READING       0
+#define	HALF_BIT      2
+#define	READ_ERROR    3
+#define	READ_TIMEOUT  4
+#define	WAITING_START 5
 
-// Buffer for command c
+// Buffer for command c (octets)
 #define IOBUFF_SIZE 7
-// Buffer for command r
+// Buffer for command r (octets)
 #define MAXBUFF_SIZE 36
 
 // Id for command i
-#define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.01."
+#define ID_STRING "Electronicayciencia's EM4205/EM4305 writer. v1.02."
 

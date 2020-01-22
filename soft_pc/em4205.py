@@ -767,7 +767,7 @@ def reader_reset():
         raise ReaderError("Command error")
 
 
-def reader_threshold(low=0, high=0, vdd=5):
+def reader_threshold(middle=2.03, trigger=2.29, vdd=5):
     """
     Set reader's comparator thresholds. Choose the nearest value
     below the low thr and the nearest above high threshold.
@@ -782,6 +782,9 @@ def reader_threshold(low=0, high=0, vdd=5):
 
     Error
         ReaderError if unexpected response from reader.
+
+    TODO: devuelve 0 si el mayor está fuera de los límites
+          debería devolver el valor máximo
     """
     
     VREF_LOW = 0xa0
@@ -794,27 +797,26 @@ def reader_threshold(low=0, high=0, vdd=5):
     for vr in range(16):
         v[VREF_HIGH|vr] = vr/32*vdd+vdd/4
     
-    thr_l = None
-    thr_h = None
+    comp_middle = None
+    comp_trigger = None
     
     for i in v.keys():
-        if thr_h is None:
-            thr_l = i
-            thr_h = i
+        if comp_middle is None:
+            comp_middle = i
+            comp_trigger = i
 
-        if v[i] < low and abs(v[i] - low) < abs(v[thr_l] - low):
-            thr_l = i
+        if v[i] < middle and abs(v[i] - middle) < abs(v[comp_middle] - middle):
+            comp_middle = i
 
-        if v[i] > high and abs(v[i] - high) < abs(v[thr_h] - high):
-            thr_h = i
+        if v[i] > trigger and abs(v[i] - trigger) < abs(v[comp_trigger] - trigger):
+            comp_trigger = i
 
-    # set the values
-    _serial_conn.write(b'h' + bytes([thr_l, thr_h]))
+    _serial_conn.write(b'h' + bytes([comp_middle, comp_trigger]))
     r = _serial_conn.read(1)
     if r[0] != ERR_NOERR:
         raise ReaderError("Command error")
 
-    return (v[thr_l], v[thr_h])
+    return (v[comp_middle], v[comp_trigger])
 
 
 #####################################################################
@@ -824,15 +826,9 @@ def reader_threshold(low=0, high=0, vdd=5):
 if __name__ == "__main__":
     _DEBUG = 0
 
-    print(init('COM3'))
-    reader_debug(2)
-    reader_datarate(16)
-    reader_threshold(2.1,2.35)
-    read(0)
-    exit()
-  
     def keyfob_64_manchester():
-        reader_datarate(64)
+        #reader_threshold(3.2,3.2)
+        #reader_datarate(64)
         a = read_stream()
         msg = "{0:0288b}".format(biphase2manchester(288,a))
         start = msg.find("111111111")
@@ -842,6 +838,12 @@ if __name__ == "__main__":
         msg = msg[start:start+64]
         print(msg)
 
+
+    print(init('COM3'))
+    #reader_debug(0)
+    reader_datarate(32)
+  
+   
     #keyfob_64_manchester()
     #for i in range(5,14):
     #    write(i,0x0)

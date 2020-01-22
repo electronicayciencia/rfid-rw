@@ -3,64 +3,17 @@
 /**************************************************************************
  * GLOBAL DATA
  **************************************************************************/
-// TMR1 value when last comparator change
-// you must clear this variable once used 
-// since a status change could happen while you are proccesing last one.
-// read_wait will not wait anymore if you forget to clear this variable.
-int16 last_change_lapse;
-
-// Reader status
-int8 status;
-
 // Default time threshold between a whole bit and semi bit period (us)
 int16 semibit_time = DEFAULT_SEMI_TIME;
 
-// Comparator hysteresis
-int8 thr_h = DEFAULT_THR_H;
-int8 thr_l = DEFAULT_THR_L;
+// Comparator levels
+int comp_middle = DEFAULT_MIDDLE_LEVEL;
+int comp_trigger = DEFAULT_TRIGGER_LEVEL;
 
 //Debug of comparator on DEBUG_PIN
 // debug = 1: pin change as comparator do
-// debug = 2: half bit periods
+// debug = 2: user defined (hardcoded)
 int debug = 0;
-
-
-
-/**************************************************************************
- * INTERRUPT SERVICE FUNCTIONS
- **************************************************************************/
-
-#INT_TIMER1
-void tmr1_overflow() {
-	disable_interrupts(INT_TIMER1);
-	status = READ_TIMEOUT;
-}
-
-
-#INT_COMP
-/* Register the moment of last input change */
-void comp_change() {
-	int16 us = get_timer1();
-	set_timer1(0); // reset reading watchdog
-	
-	// ignore changes shorter than 3 periods
-	//if (us < 24)
-	//	return;
-
-	// Inverting input:
-	// C1OUT = 1:  V < Thr
-	// C1OUT = 0:  V > Thr
-	if (C1OUT){
-		if (debug == 1) output_low(DEBUG_PIN);
-		setup_vref(thr_h);
-	}
-	else {
-		if (debug == 1) output_high(DEBUG_PIN);
-		setup_vref(thr_l);
-	}
-	
-	last_change_lapse = us;
-}
 
 
 /**************************************************************************
@@ -130,20 +83,11 @@ void send_buff(int n, char *buff) {
  * Prepare the hardware for reading. Then wait for high level.
  */
 void read_start() {
-	status = READING; // clears previous error condition	
 	set_timer1(0);
-	last_change_lapse = 0;
-	
 	clear_interrupt(INT_TIMER1);
-	clear_interrupt(INT_COMP);
-	
-	setup_vref(thr_h);
+	setup_vref(comp_trigger);
 	setup_comparator(A1_VR);
-	if (debug == 1) output_low(DEBUG_PIN);
-	if (debug == 2) output_low(DEBUG_PIN);
-	
-	enable_interrupts(INT_TIMER1);
-	enable_interrupts(INT_COMP);
+	output_low(DEBUG_PIN);
 }
 
 
@@ -151,8 +95,7 @@ void read_start() {
  * Disable the reading mode.
  */
 void read_stop() {
-	disable_interrupts(INT_TIMER1);
-	disable_interrupts(INT_COMP);
+//	disable_interrupts(INT_COMP);
 	setup_comparator(NC_NC);	
 }
 
@@ -161,22 +104,30 @@ void read_stop() {
  * Wait for line level change to read data.
  * You must call read_start before this function
  * Output:
- *   1: if no error
  *   0: if Timer1 overflows before any input change
+ *   1: if it was a short wait (below semibit time limit)
+ *   2: if was a long wait
  */
 int read_wait() {
-	while (last_change_lapse == 0 && 
-	       status != READ_TIMEOUT) {};
+	int v = C1OUT;
 
-	if (status == READ_TIMEOUT) {
-		read_stop();
-		return 0;
+	while (v == C1OUT) {
+		if (interrupt_active(INT_TIMER1)) {
+			read_stop();
+			return 0;
+		}
 	}
-	else {
+		
+	if (get_timer1() < semibit_time) {
+		set_timer1(0);
 		return 1;
 	}
+	else {
+		set_timer1(0);
+		return 2;
+	}
 }
-
+	
 
 /**** READ bits
  * Read a number of bits into a buffer. Disable the read mode when finish.
@@ -199,21 +150,30 @@ int read_wait() {
  */
 int read_bits(int16 bits, char *buff, int bufflen) {
 	int16 bits_read = 0;
-	last_change_lapse = 0;
+	int status = WAITING_START;
 	
-	while (status != READ_ERROR && bits_read < bits) {
-		if (!read_wait())
-			return ERR_READ_TIMEOUT;
+	while (bits_read < bits) {
+		int w = read_wait();
 
-		if (debug == 2) output_high(DEBUG_PIN); // processing
+		output_high(DEBUG_PIN); // processing
+		
+		if (!w) {
+			read_stop();
+			return ERR_READ_TIMEOUT;
+		}
+
+		if (status == WAITING_START) {
+			setup_vref(comp_middle);
+			status = READING;
+			continue;
+		}
 		
 		//is it half period?
-		if (last_change_lapse <= semibit_time) {
-			last_change_lapse = 0;
+		if (w == 1) {
 			if (status == HALF_BIT) {
-				// it's a Zero!
+				// it was a Zero!
 				status = READING;
-				
+
 				// Warning: shift_right 2nd arg must be a constant
 				if (bufflen == IOBUFF_SIZE) {
 					shift_right(buff, IOBUFF_SIZE, 0);
@@ -230,16 +190,17 @@ int read_bits(int16 bits, char *buff, int bufflen) {
 		}
 		
 		//it's whole period
-		else {
-			last_change_lapse = 0;
+		else if (w == 2) {
 			if (status == HALF_BIT) {
 				// it's not compliant :(
 				status = READ_ERROR;
+				read_stop();
+				return ERR_READ_ERROR;
 			}
 			else {
 				//it's a One!
 				status = READING;
-				
+
 				// Warning: shift_right 2nd arg must be a constant
 				if (bufflen == IOBUFF_SIZE) {
 					shift_right(buff, IOBUFF_SIZE, 1);
@@ -250,15 +211,12 @@ int read_bits(int16 bits, char *buff, int bufflen) {
 				bits_read++;
 			}
 		}
-		if (debug == 2) output_low(DEBUG_PIN); //processed
+
+		output_low(DEBUG_PIN); // processing
+
 	}
 	
 	read_stop();
-	
-	if (status == READ_ERROR) {
-		return ERR_READ_ERROR;
-	}
-
 	return ERR_NOERR;
 }
 
@@ -296,15 +254,9 @@ void cmd_c() {
 	
 	memset(&iobuff, 0, IOBUFF_SIZE); // reuse the same buffer
 	
-	// let the input settle below thr_h before start reading
-	delay_us(200);
+	delay_us(WRITE_READ_PAUSE);
 
 	read_start();
-	if (!read_wait()) {
-		putc(ERR_READ_TIMEOUT);
-		return;
-	}
-	
 	int res = read_bits(bits_to_recv, &iobuff, IOBUFF_SIZE);
 	read_stop();
 	
@@ -340,35 +292,37 @@ void cmd_r() {
 	char iobuff[MAXBUFF_SIZE];
 	int16 semizeros = 2*MAXBUFF_SIZE*8; // message could be 288 zeros
 
-	// read transponder default message
+	// read transponder's default message
 	memset(&iobuff, 0, MAXBUFF_SIZE);
 
 	read_start();
-	// wait for some data
-	last_change_lapse = 0;
-	if (!read_wait()) {
-		putc(ERR_READ_TIMEOUT);
-		return;
-	}
 	
 	// Wait for a one
 	// corner case: no ones, the message is all zeros
-	while (last_change_lapse < semibit_time) {
-		last_change_lapse = 0;
-	
-		semizeros--;
+	while (true) {
+		int w = read_wait();
 		
-		if (semizeros == 0) {
-			read_stop();
-			putc(ERR_EMPTY_MESSAGE);
-			return;
-		}
-		
-		if (!read_wait()) {
+		if (w == 2)
+			break;
+
+		if (w == 0) {
 			putc(ERR_READ_TIMEOUT);
 			return;
 		}
+		
+		if (w == 1) {
+			semizeros--;
+		
+			if (semizeros == 0) {
+				read_stop();
+				putc(ERR_EMPTY_MESSAGE);
+				return;
+			}
+		}
 	}
+
+	// this prevents read_bits to wait for start
+	// va a dar error esta de momento
 
 	int r = read_bits(288, &iobuff, MAXBUFF_SIZE);
 	read_stop();
@@ -429,11 +383,8 @@ void cmd_t() {
  **************************************************************************/
 
 void main() {
-	disable_interrupts(INT_COMP);
-	disable_interrupts(INT_TIMER1);	
-	
-	// Timer1 counts us @8MHz
-	// overflows at 65ms (read timeout)
+	// Timer1 counts us @8MHz, we use it as read timer
+	// overflows at 65ms (we use it as read timeout)
 	setup_timer_1(T1_INTERNAL|T1_DIV_BY_2);
 	
 	// Timer2 sets the oscillator frecuency: 125kHz.
@@ -441,15 +392,8 @@ void main() {
 	set_pwm1_duty((int16)DC);
 	setup_ccp1(CCP_PWM);
 
-	// We don't need comparator until read
-	setup_vref(thr_h);
+	// We won't use the comparator until read
 	setup_comparator(NC_NC);
-
-	enable_interrupts(GLOBAL);
-
-	
-	//enable_interrupts(INT_COMP);
-	//while(TRUE) {}
 
 	while(TRUE) {
 		int command = getc();
@@ -465,10 +409,10 @@ void main() {
 			putc(ERR_NOERR);
 		}
 
-		//h: set comparator levels, first low then high
+		//h: set comparator levels, first middle then trigger
 		else if (command == 'h') {
-			thr_l = getc();
-			thr_h = getc();
+			comp_middle = getc();
+			comp_trigger = getc();
 			putc(ERR_NOERR);
 		}
 
