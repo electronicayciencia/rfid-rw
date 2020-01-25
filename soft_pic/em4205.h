@@ -16,8 +16,8 @@
 #define CYCLE 8
 
 // Comparator levels:
-//   Middle level: 2.03
-//   Above noise level: 2.29
+//   Level up: 2.29
+//   Level down: 1.72
 #define DEFAULT_MIDDLE_LEVEL  VREF_HIGH|5
 #define DEFAULT_TRIGGER_LEVEL VREF_LOW|11
 
@@ -25,7 +25,7 @@
 #define DEFAULT_SEMI_TIME 190
 
 // us to wait between command and response.
-// It lets the input settle below comp_trigger before start reading
+// It lets the input settle below comp_trigger_up before start reading
 #define WRITE_READ_PAUSE 250
 
 // Output error condition

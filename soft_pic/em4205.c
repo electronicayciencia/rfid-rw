@@ -10,11 +10,6 @@ int16 semibit_time = DEFAULT_SEMI_TIME;
 int comp_middle = DEFAULT_MIDDLE_LEVEL;
 int comp_trigger = DEFAULT_TRIGGER_LEVEL;
 
-//Debug of comparator on DEBUG_PIN
-// debug = 1: pin change as comparator do
-// debug = 2: user defined (hardcoded)
-int debug = 0;
-
 
 /**************************************************************************
  * WRITE FUNCTIONS
@@ -80,23 +75,14 @@ void send_buff(int n, char *buff) {
  **************************************************************************/
 
 /**** READ start
- * Prepare the hardware for reading. Then wait for high level.
+ * Prepare the hardware for reading.
  */
 void read_start() {
+	output_low(DEBUG_PIN);
+	setup_vref(comp_trigger);
 	set_timer1(0);
 	clear_interrupt(INT_TIMER1);
-	setup_vref(comp_trigger);
-	setup_comparator(A1_VR);
-	output_low(DEBUG_PIN);
-}
-
-
-/**** READ stop
- * Disable the reading mode.
- */
-void read_stop() {
-//	disable_interrupts(INT_COMP);
-	setup_comparator(NC_NC);	
+	input(DEBUG_PIN);
 }
 
 
@@ -110,24 +96,24 @@ void read_stop() {
  */
 int read_wait() {
 	int v = C1OUT;
+	int semibit = 1;
 
 	while (v == C1OUT) {
 		if (interrupt_active(INT_TIMER1)) {
-			read_stop();
 			return 0;
 		}
+		if (get_timer1() >= semibit_time)
+			semibit = 2;
 	}
-		
-	if (get_timer1() < semibit_time) {
-		set_timer1(0);
-		return 1;
-	}
-	else {
-		set_timer1(0);
-		return 2;
-	}
+	set_timer1(0);
+
+	output_bit(DEBUG_PIN,1);
+	output_bit(DEBUG_PIN,0);
+
+	if (semibit_time < 400)
+		return semibit;
 }
-	
+
 
 /**** READ bits
  * Read a number of bits into a buffer. Disable the read mode when finish.
@@ -154,17 +140,14 @@ int read_bits(int16 bits, char *buff, int bufflen) {
 	
 	while (bits_read < bits) {
 		int w = read_wait();
-
-		output_high(DEBUG_PIN); // processing
 		
 		if (!w) {
-			read_stop();
 			return ERR_READ_TIMEOUT;
 		}
 
 		if (status == WAITING_START) {
-			setup_vref(comp_middle);
 			status = READING;
+			setup_vref(comp_middle);
 			continue;
 		}
 		
@@ -193,8 +176,6 @@ int read_bits(int16 bits, char *buff, int bufflen) {
 		else if (w == 2) {
 			if (status == HALF_BIT) {
 				// it's not compliant :(
-				status = READ_ERROR;
-				read_stop();
 				return ERR_READ_ERROR;
 			}
 			else {
@@ -211,12 +192,8 @@ int read_bits(int16 bits, char *buff, int bufflen) {
 				bits_read++;
 			}
 		}
-
-		output_low(DEBUG_PIN); // processing
-
 	}
-	
-	read_stop();
+
 	return ERR_NOERR;
 }
 
@@ -258,7 +235,6 @@ void cmd_c() {
 
 	read_start();
 	int res = read_bits(bits_to_recv, &iobuff, IOBUFF_SIZE);
-	read_stop();
 	
 	if (res == ERR_NOERR) {
 		putc(ERR_NOERR);
@@ -314,7 +290,6 @@ void cmd_r() {
 			semizeros--;
 		
 			if (semizeros == 0) {
-				read_stop();
 				putc(ERR_EMPTY_MESSAGE);
 				return;
 			}
@@ -322,10 +297,9 @@ void cmd_r() {
 	}
 
 	// this prevents read_bits to wait for start
-	// va a dar error esta de momento
+	read_wait();
 
 	int r = read_bits(288, &iobuff, MAXBUFF_SIZE);
-	read_stop();
 
 	if (r == 0) {
 		putc(ERR_NOERR); // error condition 0
@@ -383,6 +357,10 @@ void cmd_t() {
  **************************************************************************/
 
 void main() {
+	
+	// Comparator 1 reads de input data signal
+	setup_comparator(A1_VR);
+	
 	// Timer1 counts us @8MHz, we use it as read timer
 	// overflows at 65ms (we use it as read timeout)
 	setup_timer_1(T1_INTERNAL|T1_DIV_BY_2);
@@ -392,9 +370,6 @@ void main() {
 	set_pwm1_duty((int16)DC);
 	setup_ccp1(CCP_PWM);
 
-	// We won't use the comparator until read
-	setup_comparator(NC_NC);
-
 	while(TRUE) {
 		int command = getc();
 		
@@ -403,12 +378,6 @@ void main() {
 			cmd_c();	
 		}
 		
-		//d: activate debug
-		else if (command == 'd') {
-			debug = getc();
-			putc(ERR_NOERR);
-		}
-
 		//h: set comparator levels, first middle then trigger
 		else if (command == 'h') {
 			comp_middle = getc();
