@@ -574,7 +574,7 @@ def config_reset(pwd=0):
     try:
         login(pwd)
     except (ResponseError, TransponderError):
-        pass  # Transponder config migth be unknown at this point
+        pass  # Transponder config might be unknown at this point
 
     reader_datarate(32)
     write(WORD_CONF, DEFAULT_CONFIG)
@@ -861,9 +861,20 @@ if __name__ == "__main__":
 
     #dump_all()
 
+    # Imitar tarjeta:
+    #write(5, 0b10100101000001100000000111111111)
+    #write(6, 0b01101010011000111110010011001011)
+    #write(7, 0b10100101000001100000000111111111)
+    #write(8, 0b01101010011000111110010011001011)
+    #write(9, 0)
+    #write(10, 0)
+    #write(11, 0)
+    #write(12, 0)
+    #write(13, 0)
+    #dump_all()
 
-
-
+    #config_encoder("manchester")
+    #config_datarate(64)
 
 
 #    exit()
