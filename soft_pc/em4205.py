@@ -56,7 +56,7 @@ _DEBUG = 0
 #####################################################################
 # Auxiliary and bit-wise functions
 #
-def word2data(w):
+def _word2data(w):
     """
     Convert a 32bit Word to Data Structure format
 
@@ -89,7 +89,7 @@ def word2data(w):
     return data
 
 
-def data2word(d):
+def _data2word(d):
     """
     Convert a 45 bit Data Structure format to a 32bit Word
 
@@ -137,7 +137,7 @@ def data2word(d):
     return word
 
 
-def num2addr(n):
+def _num2addr(n):
     """
     Convert a 4bit number to Address bit format
 
@@ -162,7 +162,7 @@ def num2addr(n):
     return a
 
 
-def cmd2cmdf(i):
+def _cmd2cmdf(i):
     """
     Convert a 3bit number to Command bit format
 
@@ -187,7 +187,7 @@ def cmd2cmdf(i):
     return o
 
 
-def num2bytes(nbytes, num):
+def _num2bytes(nbytes, num):
     """
     Pack a bytes string formed by nbytes of the num in Little Endian order.
 
@@ -207,7 +207,7 @@ def num2bytes(nbytes, num):
     return s
 
 
-def bytes2num(data_bytes):
+def _bytes2num(data_bytes):
     """
     Return a number from the input bytes Little Endian order.
 
@@ -282,7 +282,7 @@ def parse_response(bits, resp):
     """
 
     try:
-        data_bin = bytes2num(resp)
+        data_bin = _bytes2num(resp)
     except:
         raise ReaderError("Invalid response: " + resp)
 
@@ -334,7 +334,7 @@ def do_cmd(msg, bts, btr):
         print("Message to send ({0:d} bits): {1:056b}".format(bts, msg))
 
     msg <<= 56 - bts  # pad the message to 56 bits
-    string_to_send = b'c' + bytes([bts, btr]) + num2bytes(7, msg)
+    string_to_send = b'c' + bytes([bts, btr]) + _num2bytes(7, msg)
 
     if _serial_conn is None:
         raise ReaderError("Please, initialize serial connection")
@@ -392,9 +392,9 @@ def read(addr):
 
     # cmd: (4 bits) + address (7 bits)
     # res: preamble (8bits) + data struct (45 bits)
-    msg = (cmd2cmdf(0b001) << 7) + num2addr(addr)
+    msg = (_cmd2cmdf(0b001) << 7) + _num2addr(addr)
     data = do_cmd(msg, 4+7, 8+45)
-    return data2word(data)
+    return _data2word(data)
 
 
 def write(addr, word):
@@ -414,7 +414,7 @@ def write(addr, word):
     if word >= 1<<32:
         raise ValueError("Word must be below 2^32")
 
-    msg = (cmd2cmdf(0b010) << 52) + (num2addr(addr) << 45) + word2data(word)
+    msg = (_cmd2cmdf(0b010) << 52) + (_num2addr(addr) << 45) + _word2data(word)
     do_cmd(msg, 4+7+45, 8)
 
 
@@ -435,7 +435,7 @@ def login(pwd):
 
     # msg: cmd (4 bits) + password as data structure (45 bits)
     # res: preamble (8bits)
-    msg = (cmd2cmdf(0b100) << 45) + word2data(pwd)
+    msg = (_cmd2cmdf(0b100) << 45) + _word2data(pwd)
     do_cmd(msg, 4+45, 8)
 
 
@@ -472,7 +472,7 @@ def disable():
     """
     # msg: cmd (4 bits) + all 1's data structure (45 bits)
     # res: preamble (8bits)
-    msg = (cmd2cmdf(0b101) << 45) + word2data(0xFFFFFFFF)
+    msg = (_cmd2cmdf(0b101) << 45) + _word2data(0xFFFFFFFF)
     do_cmd(msg, 4+45, 8)
 
 
@@ -494,7 +494,7 @@ def set_password(pwd):
     pass
 
 
-def enable_read_password(ena=1):
+def config_enable_read_password(ena=1):
     config = read(WORD_CONF)
     if ena:
         config = _set_bit(config, BIT_READLOGIN)
@@ -504,7 +504,7 @@ def enable_read_password(ena=1):
     write(WORD_CONF, config)
 
 
-def enable_write_password(ena=1):
+def config_enable_write_password(ena=1):
     config = read(WORD_CONF)
     if ena:
         config = _set_bit(config, BIT_WRITELOGIN)
@@ -514,7 +514,7 @@ def enable_write_password(ena=1):
     write(WORD_CONF, config)
 
 
-def enable_disablecmd(ena=1):
+def config_enable_disablecmd(ena=1):
     config = read(WORD_CONF)
     if ena:
         config = _set_bit(config, BIT_DISABLECMD)
@@ -524,7 +524,7 @@ def enable_disablecmd(ena=1):
     write(WORD_CONF, config)
 
 
-def set_encoder(enc):
+def config_encoder(enc):
     config = read(WORD_CONF)
 
     if enc == "biphase":
@@ -541,7 +541,7 @@ def set_encoder(enc):
     write(WORD_CONF, config)
 
 
-def set_datarate(datarate):
+def config_datarate(datarate):
     dr = {
         8:  0b000011,
         16: 0b000111,
@@ -564,7 +564,7 @@ def set_datarate(datarate):
     write(WORD_CONF, config)
 
 
-def reset_config(pwd=0):
+def config_reset(pwd=0):
     """
     Reconfig the chip is initialized to Bi-phase data encoding, RF/32
     clock data rate. Its LWR value is set to 8. No password.
@@ -647,7 +647,7 @@ def reader_datarate(rf_cycles=0):
     return resp[1]<<1
 
 
-def init(serial_port="COM3"):
+def reader_init(serial_port="COM3"):
     """
     Open a serial port and fills the "_serial_conn" class variable
     Ask for identification string and check the response.
@@ -712,7 +712,7 @@ def read_stream():
         raise TransponderError("Empty message")
     
     msg = _serial_conn.read(36)
-    return bytes2num(msg)
+    return _bytes2num(msg)
     
 
 def reader_debug(debug_type):
@@ -839,7 +839,7 @@ if __name__ == "__main__":
         print(msg)
 
 
-    print(init('COM3'))
+    print(reader_init('COM3'))
     #reader_debug(0)
     reader_datarate(32)
   
@@ -850,14 +850,14 @@ if __name__ == "__main__":
 
     #dump_all()
     #write( 5, 0b10000000000000000000000000000010)
-    #write( 6, 0b10000000000000000000000000000100)
-    #write( 7, 0b10000000000000000000000000001000)
-    #write( 8, 0b10000000000000000000000000010000)
-    #write( 9, 0b10000000000000000000000000100000)
-    #write(10, 0b10000000000000000000000001000000)
-    #write(11, 0b10000000000000000000000010000000)
-    #write(12, 0b10000000000000000000000100000000)
-    #write(13, 0b10000000000000000000001000000000)
+    #write( 6, 0b10000000000000000000000000000110)
+    #write( 7, 0b10000000000000000000000000001110)
+    #write( 8, 0b10000000000000000000000000011110)
+    #write( 9, 0b10000000000000000000000000111110)
+    #write(10, 0b10000000000000000000000001111110)
+    #write(11, 0b10000000000000000000000011111110)
+    #write(12, 0b10000000000000000000000111111110)
+    #write(13, 0b10000000000000000000001111111110)
 
     #dump_all()
 
