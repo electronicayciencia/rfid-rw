@@ -6,6 +6,12 @@ Module to interact with EM4x05 chips
 Requires: PySerial
 
 Reinoso G. - Blog Electronicayciencia - 23/12/2019
+
+To install bitarray on windows: 
+ https://www.lfd.uci.edu/~gohlke/pythonlibs/
+ download bitarray whl
+ pip install xxx.whl
+
 """
 
 import serial
@@ -34,19 +40,15 @@ class ReaderError(Error):
     """Reader is not ready. The reader's response is not what we expected,
     no reponse from reader or malformed one."""
 
-
 class TransponderError(Error):
     """The reader could not communicate with the transponder or it did not
     respond (e.g. no chip detected)."""
 
-
 class ResponseError(Error):
     """The response from chip has some error, bad parity or bad preamble."""
 
-
 class CommandRejected(ResponseError):
     """The transponder refuses to comply. Command error or login required."""
-
 
 # module variable: serial connection object by PySerial
 _serial_conn = None
@@ -827,8 +829,10 @@ if __name__ == "__main__":
     _DEBUG = 0
 
     def keyfob_64_manchester():
-        #reader_threshold(3.2,3.2)
-        #reader_datarate(64)
+        """
+        Read and dump the message in EM4100 binary format.
+        """
+        reader_datarate(64)
         a = read_stream()
         msg = "{0:0288b}".format(biphase2manchester(288,a))
         start = msg.find("111111111")
@@ -840,28 +844,11 @@ if __name__ == "__main__":
 
 
     print(reader_init('COM3'))
-    #reader_debug(0)
-    reader_datarate(32)
   
-   
-    #keyfob_64_manchester()
-    #for i in range(5,14):
-    #    write(i,0x0)
-
     #dump_all()
-    #write( 5, 0b10000000000000000000000000000010)
-    #write( 6, 0b10000000000000000000000000000110)
-    #write( 7, 0b10000000000000000000000000001110)
-    #write( 8, 0b10000000000000000000000000011110)
-    #write( 9, 0b10000000000000000000000000111110)
-    #write(10, 0b10000000000000000000000001111110)
-    #write(11, 0b10000000000000000000000011111110)
-    #write(12, 0b10000000000000000000000111111110)
-    #write(13, 0b10000000000000000000001111111110)
-
     #dump_all()
 
-    # Imitar tarjeta:
+    # Clone card:
     #write(5, 0b10100101000001100000000111111111)
     #write(6, 0b01101010011000111110010011001011)
     #write(7, 0b10100101000001100000000111111111)
