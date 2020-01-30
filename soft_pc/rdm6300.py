@@ -30,7 +30,17 @@ from struct import unpack
 from time import sleep
 
 PORT = "COM3"
-AUTHORIZED = (0x0ab49789, 0x0068D284)
+
+STAFF = {
+    179607433: "Mr. Jiminis",
+    6869636: "Mr. Guzman",
+    1961262: "Ms. Smith",
+    3620985: "Mr. Batman"
+}
+
+# Only Batman and Mr Jiminis are allowed in the room
+AUTHORIZED = (179607433, 3620985)
+
 
 colorama.init()
 serial_conn = serial.Serial(PORT, 9600, timeout=0.1)
@@ -63,11 +73,21 @@ while True:
     date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
     if code in AUTHORIZED:
-        access = termcolor.colored("  ACCESS GRANTED  ", "green")
+        access = termcolor.colored(" ACCESS GRANTED ", "green")
     else:
-        access = termcolor.colored("  ACCESS DENIED  ", "white", "on_red")
+        access = termcolor.colored(" ACCESS DENIED  ", "white", "on_red")
 
-    print("%s - Id: %010d - %s" % (date, code, access))
+    if code in STAFF:
+        name = STAFF[code]
+    else:
+        name = "unknown"
+
+    print("%s - Id: %010d - %s - %s" % (
+        date,
+        code,
+        access,
+        termcolor.colored(name, "yellow")
+    ))
 
     try:
         sleep(1)
