@@ -42,33 +42,50 @@ STAFF = {
 AUTHORIZED = (179607433, 3620985)
 
 
-colorama.init()
-serial_conn = serial.Serial(PORT, 9600, timeout=0.1)
+def read_id():
+    """
+    Loop until a valid card is detected. 
+    Need serial_conn global.
+    Output:
+      code: code of the card read
+    Exceptions:
+      KeyboardInterrupt or SerialException
+    """
+    while True:
+        serial_conn.reset_input_buffer()
+        a = serial_conn.read_until(b'\x03')
 
-print("Electronicayciencia Access Control System.")
+        if len(a) != 14:
+            continue
+
+        (start, version, code, checksum, end) = unpack('b2s8s2sb', a)
+
+        if start != 2 or end != 3:
+            continue
+
+        version = int(version, 16)
+        code = int(code, 16)
+        checksum = int(checksum, 16)
+
+        # we don't check checksum
+        # print("Version: %02X   Code: %08X  (%010d)"
+        #    % (version, code, code), end="")
+
+        return code
+
+
+# Main code
+
+colorama.init()
+serial_conn = serial.Serial(PORT, 9600, timeout=0.3)
+
+print("Electronicayciencia's facilities Access Control")
 
 while True:
     try:
-        a = serial_conn.read_until(b'\x03')
-    except KeyboardInterrupt:
+        code = read_id()
+    except:
         break
-
-    if len(a) != 14:
-        continue
-
-    (start, version, code, checksum, end) = unpack('b2s8s2sb', a)
-
-    if start != 2 or end != 3:
-        continue
-
-    version = int(version, 16)
-    code = int(code, 16)
-    checksum = int(checksum, 16)
-
-    # we don't check checksum
-
-    # print("Version: %02X   Code: %08X  (%010d)"
-    #    % (version, code, code), end="")
 
     date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -93,5 +110,3 @@ while True:
         sleep(1)
     except KeyboardInterrupt:
         break
-
-    serial_conn.reset_input_buffer()
