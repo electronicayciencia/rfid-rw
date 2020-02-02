@@ -32,9 +32,11 @@ void send_ffs() {
  * field ON for 18 RF periods and switching it OFF for 14 RF
  * periods. Increasing the field stops up to 23 RF periods 
  * improves communication robustness.
+ * We wait only 14 cycles on because of the delay in the 
+ * rest of the program.
  */
 void send_0() {
-	delay_us(18 * CYCLE);
+	delay_us(14 * CYCLE);
 	set_pwm1_duty(0);
 	delay_us(20 * CYCLE);
 	set_pwm1_duty((int16)DC);
@@ -78,11 +80,11 @@ void send_buff(int n, char *buff) {
  * Prepare the hardware for reading.
  */
 void read_start() {
-	output_low(DEBUG_PIN);
+	//output_low(DEBUG_PIN);
 	setup_vref(comp_trigger);
 	set_timer1(0);
 	clear_interrupt(INT_TIMER1);
-	input(DEBUG_PIN);
+	//input(DEBUG_PIN);
 }
 
 
@@ -107,8 +109,8 @@ int read_wait() {
 	}
 	set_timer1(0);
 
-	output_bit(DEBUG_PIN,1);
-	output_bit(DEBUG_PIN,0);
+	//output_bit(DEBUG_PIN,1);
+	//output_bit(DEBUG_PIN,0);
 
 	if (semibit_time < 400)
 		return semibit;
