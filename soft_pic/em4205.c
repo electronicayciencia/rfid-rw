@@ -21,7 +21,7 @@ int comp_trigger = DEFAULT_TRIGGER_LEVEL;
  * cases regardless of tag Q factor.
  */
 void send_ffs() {
-	set_pwm1_duty(0);
+	set_pwm1_duty((int16)0);
 	delay_us(55 * CYCLE);
 	set_pwm1_duty((int16)DC);
 }
@@ -37,7 +37,7 @@ void send_ffs() {
  */
 void send_0() {
 	delay_us(14 * CYCLE);
-	set_pwm1_duty(0);
+	set_pwm1_duty((int16)0);
 	delay_us(20 * CYCLE);
 	set_pwm1_duty((int16)DC);
 }
@@ -359,6 +359,8 @@ void cmd_t() {
  **************************************************************************/
 
 void main() {
+	// Adjust fine tunning for 125kHz
+	setup_oscillator(OSC_8MHz, 7);
 	
 	// Comparator 1 reads de input data signal
 	setup_comparator(A1_VR);
@@ -416,7 +418,7 @@ void main() {
 		
 		//z: disable magnetic field
 		else if (command == 'z') {
-			set_pwm1_duty(0);
+			set_pwm1_duty((int16)0);
 			putc(ERR_NOERR);
 		}
 

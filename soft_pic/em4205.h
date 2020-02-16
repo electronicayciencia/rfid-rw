@@ -8,7 +8,8 @@
 #define DEBUG_PIN PIN_A5
 
 // adjust PWM duty cycle due to output stage switching time.
-#define DC 20
+// Adjust for 125kHz
+#define DC 21
 #define FREQ 15
 
 
