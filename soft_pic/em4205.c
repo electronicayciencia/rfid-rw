@@ -109,11 +109,7 @@ int read_wait() {
 	}
 	set_timer1(0);
 
-	//output_bit(DEBUG_PIN,1);
-	//output_bit(DEBUG_PIN,0);
-
-	if (semibit_time < 400)
-		return semibit;
+	return semibit;
 }
 
 
