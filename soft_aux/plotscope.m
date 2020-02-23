@@ -55,8 +55,9 @@ v = v(2:end-1);
 % wave (area).
 env = movmean(abs(v),40);
 env = env / max(env);
-vnorm = abs(v/max(v));
-b = 0.6*env + 0.4*vnorm;
+vnorm = abs(v/quantile(abs(v),0.50));
+vnorm(vnorm > 1) = 1;
+b = 0.0*env + 0.8*vnorm;
 
 % Map brightness to color using logistic function
 %brightness = 0.2;
