@@ -7,7 +7,7 @@ Requires: PySerial
 
 Reinoso G. - Blog Electronicayciencia - 23/12/2019
 
-To install bitarray on windows: 
+To install bitarray on windows (not needed here yet):
  https://www.lfd.uci.edu/~gohlke/pythonlibs/
  download bitarray whl
  pip install xxx.whl
@@ -32,6 +32,8 @@ ERR_EMPTY_MESSAGE = 3
 ERR_COMMAND_UNKNOWN = 255
 
 #####################################################################
+
+
 class Error(Exception):
     pass
 
@@ -40,15 +42,19 @@ class ReaderError(Error):
     """Reader is not ready. The reader's response is not what we expected,
     no reponse from reader or malformed one."""
 
+
 class TransponderError(Error):
     """The reader could not communicate with the transponder or it did not
     respond (e.g. no chip detected)."""
 
+
 class ResponseError(Error):
     """The response from chip has some error, bad parity or bad preamble."""
 
+
 class CommandRejected(ResponseError):
     """The transponder refuses to comply. Command error or login required."""
+
 
 # module variable: serial connection object by PySerial
 _serial_conn = None
@@ -407,13 +413,13 @@ def write(addr, word):
         address of the word to write; word: value to write
     Output
         None
-    Error  
+    Error
         CommandRejected if password protected or protected word
         ValueError if word is above 32 bits.
     """
     # msg: cmd (4 bits) + address (7 bits) + data structure (45 bits)
     # res: preamble (8bits)
-    if word >= 1<<32:
+    if word >= 1 << 32:
         raise ValueError("Word must be below 2^32")
 
     msg = (_cmd2cmdf(0b010) << 52) + (_num2addr(addr) << 45) + _word2data(word)
@@ -432,7 +438,7 @@ def login(pwd):
         CommandRejected if incorrect password
         ValueError if password is over 32 bits
     """
-    if pwd >= 1<<32:
+    if pwd >= 1 << 32:
         raise ValueError("Password must be 32 bits")
 
     # msg: cmd (4 bits) + password as data structure (45 bits)
@@ -447,7 +453,7 @@ def cmd_protect(word):
 
     Input
         word: protection word value
-    Output 
+    Output
         None
     Error
         CommandRejected if not accepted (parity error or Power Check fail)
@@ -457,8 +463,8 @@ def cmd_protect(word):
 
     # for i in protected:
     #    word += 1 << i
-    #msg = (cmd2cmdf(0b011) << 45) + word2data(word)
-    #do_cmd(msg, 4+45, 8) # Command disabled
+    # msg = (cmd2cmdf(0b011) << 45) + word2data(word)
+    # do_cmd(msg, 4+45, 8) # Command disabled
 
 
 def disable():
@@ -579,15 +585,21 @@ def config_reset(pwd=0):
         pass  # Transponder config might be unknown at this point
 
     reader_datarate(32)
-    write(WORD_CONF, DEFAULT_CONFIG)
-    
-    for i in (2,5,6,7,8,9,10,11,12,13):
-        write(i,0)
+    try:
+        write(WORD_CONF, DEFAULT_CONFIG)
+    except (ResponseError, TransponderError):
+        pass
+
+    for i in (2, 5, 6, 7, 8, 9, 10, 11, 12, 13):
+        try:
+            write(i, 0)
+        except (ResponseError, TransponderError):
+            pass
 
 
 def protect(words=(1)):
     """
-    Protect words (or some) against writing. 
+    Protect words (or some) against writing.
     Note that in most chips these bits cannot be cleared.
 
     Input
@@ -599,7 +611,7 @@ def protect(words=(1)):
     for i in words:
         if i > 14 or i < 0:
             raise ValueError("Words must be between 0 and 14")
-        prot_word += 1<<i
+        prot_word += 1 << i
 
     cmd_protect(prot_word)
 
@@ -617,6 +629,8 @@ def dump_all():
 #####################################################################
 # Reader commands
 #
+
+
 def reader_datarate(rf_cycles=0):
     """
     Set the reading speed of the reader.
@@ -629,24 +643,24 @@ def reader_datarate(rf_cycles=0):
     Error
         ReaderError if no response
     """
-    #if rf_cycles not in (0,8,16,32,40,64):
+    # if rf_cycles not in (0,8,16,32,40,64):
     #    raise ValueError("Speed must be 0, 8, 16, 32, 40 or 64")
 
     if rf_cycles != 0:
         semibit = int(rf_cycles/125 * 1e3 * 3/4)
-        _serial_conn.write(b't' + bytes([semibit>>1]))
+        _serial_conn.write(b't' + bytes([semibit >> 1]))
         resp = _serial_conn.read(1)
 
         if resp[0] != 0:
-            raise ReaderError("Command 't' unkown")
-    
+            raise ReaderError("Command 't' unknown")
+
     _serial_conn.write(b't\x00')
 
     resp = _serial_conn.read(2)
     if resp[0] != ERR_NOERR:
-        raise ReaderError("Command 't' unkown")
-    
-    return resp[1]<<1
+        raise ReaderError("Command 't' unknown")
+
+    return resp[1] << 1
 
 
 def reader_init(serial_port="COM3"):
@@ -670,7 +684,7 @@ def reader_init(serial_port="COM3"):
 
 def reader_id():
     """
-    Get the reader identification string. 
+    Get the reader identification string.
     Uses _serial_conn module variable.
 
     Output
@@ -712,10 +726,10 @@ def read_stream():
         raise TransponderError("No response from chip")
     elif errc == ERR_EMPTY_MESSAGE:
         raise TransponderError("Empty message")
-    
+
     msg = _serial_conn.read(36)
     return _bytes2num(msg)
-    
+
 
 def reader_debug(debug_type):
     """
@@ -788,20 +802,20 @@ def reader_threshold(middle=2.03, trigger=2.29, vdd=5):
     TODO: devuelve 0 si el mayor está fuera de los límites
           debería devolver el valor máximo
     """
-    
+
     VREF_LOW = 0xa0
     VREF_HIGH = 0x80
 
     v = {}
     for vr in range(16):
-        v[VREF_LOW|vr] = vr/24*vdd
-    
+        v[VREF_LOW | vr] = vr/24*vdd
+
     for vr in range(16):
-        v[VREF_HIGH|vr] = vr/32*vdd+vdd/4
-    
+        v[VREF_HIGH | vr] = vr/32*vdd+vdd/4
+
     comp_middle = None
     comp_trigger = None
-    
+
     for i in v.keys():
         if comp_middle is None:
             comp_middle = i
@@ -834,7 +848,7 @@ if __name__ == "__main__":
         """
         reader_datarate(64)
         a = read_stream()
-        msg = "{0:0288b}".format(biphase2manchester(288,a))
+        msg = "{0:0288b}".format(biphase2manchester(288, a))
         start = msg.find("111111111")
         if start < 0:
             print("Format unknown")
@@ -842,27 +856,24 @@ if __name__ == "__main__":
         msg = msg[start:start+64]
         print(msg)
 
-
     print(reader_init('COM3'))
-  
-    #dump_all()
-    #dump_all()
+
+    # dump_all()
+    # dump_all()
 
     # Clone card:
-    #write(5, 0b10100101000001100000000111111111)
-    #write(6, 0b01101010011000111110010011001011)
-    #write(7, 0b10100101000001100000000111111111)
-    #write(8, 0b01101010011000111110010011001011)
-    #write(9, 0)
-    #write(10, 0)
-    #write(11, 0)
-    #write(12, 0)
-    #write(13, 0)
-    #dump_all()
-
-    #config_encoder("manchester")
-    #config_datarate(64)
+    # write(5, 0b10100101000001100000000111111111)
+    # write(6, 0b01101010011000111110010011001011)
+    # write(7, 0b10100101000001100000000111111111)
+    # write(8, 0b01101010011000111110010011001011)
+    # write(9, 0)
+    # write(10, 0)
+    # write(11, 0)
+    # write(12, 0)
+    # write(13, 0)
+    # dump_all()
+    # config_encoder("manchester")
+    # config_datarate(64)
 
 
 #    exit()
-
